@@ -38,10 +38,49 @@
   ];
 
   const STORAGE_KEY = 'nosqlearn.input';
+  const COMPLETION_KEY = 'nosqlearn.completion';
+  const THEME_KEY = 'nosqlearn.theme';
   const $ = (id) => document.getElementById(id);
   const input = $('input'), output = $('output'), errorBox = $('error');
   const notesBox = $('notes'), notesList = notesBox.querySelector('ul');
   const examples = $('examples');
+  const store = {
+    get(key) { try { return localStorage.getItem(key); } catch (e) { return null; } },
+    set(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* storage unavailable */ } },
+  };
+
+  const completionBtn = $('completion');
+  const editor = window.Editor.attach(input, { getLang: () => direction(), completion: store.get(COMPLETION_KEY) !== 'off' });
+  function showCompletion(on) {
+    completionBtn.setAttribute('aria-pressed', String(on));
+    completionBtn.textContent = on ? 'Autocomplete: on' : 'Autocomplete: off';
+  }
+  showCompletion(store.get(COMPLETION_KEY) !== 'off');
+  completionBtn.addEventListener('click', () => {
+    const on = completionBtn.getAttribute('aria-pressed') !== 'true';
+    store.set(COMPLETION_KEY, on ? 'on' : 'off');
+    showCompletion(on);
+    editor.setCompletion(on);
+    input.focus();
+  });
+
+  // Light/dark: an explicit choice is stored; otherwise the system setting applies.
+  const themeBtn = $('theme');
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+  const currentTheme = () => document.documentElement.dataset.theme || (systemDark.matches ? 'dark' : 'light');
+  function showTheme() {
+    const dark = currentTheme() === 'dark';
+    themeBtn.textContent = dark ? '☀ Light mode' : '☾ Dark mode';
+    themeBtn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+  themeBtn.addEventListener('click', () => {
+    const next = currentTheme() === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    store.set(THEME_KEY, next);
+    showTheme();
+  });
+  systemDark.addEventListener('change', showTheme);
+  showTheme();
 
   // Strip leading whitespace/comments, then look for something only the MongoDB shell starts with.
   function detect(src) {
@@ -60,8 +99,9 @@
   }
 
   function run() {
+    editor.refresh();
     const src = input.value;
-    try { localStorage.setItem(STORAGE_KEY, src); } catch (e) { /* storage unavailable */ }
+    store.set(STORAGE_KEY, src);
     const dir = direction();
     $('input-label').textContent = dir === 'mongo' ? 'MongoDB' : 'SQL';
     $('output-label').textContent = dir === 'mongo' ? 'SQL' : 'MongoDB';
@@ -70,7 +110,7 @@
     const translator = dir === 'mongo' ? window.MongoToSql : window.SqlToMongo;
     try {
       const result = translator.translate(src);
-      output.textContent = result.output;
+      output.innerHTML = window.Editor.highlight(result.output, dir === 'mongo' ? 'sql' : 'mongo');
       renderNotes(result.notes);
     } catch (e) {
       if (!(e instanceof translator.TranslateError)) console.error(e);
@@ -109,11 +149,6 @@
   input.addEventListener('input', schedule);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); clearTimeout(timer); run(); }
-    if (e.key === 'Tab' && !e.shiftKey) {
-      e.preventDefault();
-      input.setRangeText('  ', input.selectionStart, input.selectionEnd, 'end');
-      schedule();
-    }
   });
   document.querySelectorAll('input[name="dir"]').forEach((r) => r.addEventListener('change', run));
 
@@ -138,8 +173,7 @@
     setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
   });
 
-  let saved = null;
-  try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) { /* storage unavailable */ }
+  const saved = store.get(STORAGE_KEY);
   input.value = saved != null && saved.trim() ? saved : EXAMPLES[0].code;
   run();
 })();

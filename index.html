@@ -5,10 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>(No)SQLearn — SQL ⇄ MongoDB translator</title>
   <meta name="description" content="Translate SQL queries to MongoDB shell commands and back, with notes on how each part maps.">
+  <script>try { var t = localStorage.getItem('nosqlearn.theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="site-header">
+    <button type="button" id="theme" class="theme-toggle">☾ Dark mode</button>
     <h1>(No)SQLearn</h1>
     <p class="tagline">Write SQL, get MongoDB — or the other way around.</p>
   </header>
@@ -33,9 +35,12 @@
       <section class="pane">
         <div class="pane-head">
           <h2 id="input-label">SQL</h2>
-          <button type="button" id="clear">Clear</button>
+          <div class="pane-actions">
+            <button type="button" id="completion" aria-pressed="true" title="Close brackets and quotes, keep indentation, and finish keywords as you type (Tab or → to accept)">Autocomplete: on</button>
+            <button type="button" id="clear">Clear</button>
+          </div>
         </div>
-        <textarea id="input" spellcheck="false" autocomplete="off" aria-labelledby="input-label"
+        <textarea id="input" wrap="off" spellcheck="false" autocomplete="off" aria-labelledby="input-label"
           placeholder="Paste a SQL query or a MongoDB command, e.g.&#10;SELECT name FROM users WHERE age > 30"></textarea>
       </section>
 
@@ -62,11 +67,13 @@
     arrays, DDL (tables, indexes, views) and transactions ⇄ find, aggregate pipelines ($lookup, $unwind,
     $facet, $setWindowFields…), updates, indexes and $jsonSchema collections.
     Array features use PostgreSQL syntax.
-    <br>v1.00
+    <p class="credit">Built by Katz Entrepreneurship. Contact <a href="mailto:bykatz.business@gmail.com">bykatz.business@gmail.com</a> for further inquiries.</p>
+    <p class="version">v1.1</p>
   </footer>
 
   <script src="js/sql-to-mongo.js"></script>
   <script src="js/mongo-to-sql.js"></script>
+  <script src="js/editor.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

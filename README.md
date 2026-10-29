@@ -13,6 +13,9 @@ or you can pick it yourself. The examples menu is grouped by level.
 - **⇄** puts the result back in as the new input
 - **Ctrl/⌘ + Enter** translates immediately
 - Separate multiple statements with `;` (SQL) or new lines (MongoDB)
+- **Autocomplete** (on by default, toggle in the input pane) closes brackets and quotes, keeps indentation on Enter,
+  and offers the rest of the keyword, function, method or `$operator` you are typing: **Tab** or **→** accepts, **Esc** dismisses
+- The button above the title switches between light and dark mode (the default follows your system)
 
 ## What's supported
 
@@ -96,6 +99,7 @@ index.html            page markup
 css/style.css         styles (light and dark)
 js/sql-to-mongo.js    SQL parser + MongoDB generator
 js/mongo-to-sql.js    mongosh parser + SQL generator
-js/app.js             UI wiring and examples
+js/editor.js          syntax highlighting and autocomplete for the input
+js/app.js             UI wiring, examples and theme
 test/                 Node test script
 ```
