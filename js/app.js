@@ -73,11 +73,33 @@
     themeBtn.setAttribute('aria-checked', String(dark));
     themeBtn.title = dark ? 'Dark mode is on. Click for light mode' : 'Light mode is on. Click for dark mode';
   }
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   themeBtn.addEventListener('click', () => {
     const next = currentTheme() === 'dark' ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next;
-    store.set(THEME_KEY, next);
-    showTheme();
+    const apply = () => {
+      document.documentElement.dataset.theme = next;
+      store.set(THEME_KEY, next);
+      showTheme();
+    };
+    if (!document.startViewTransition || reducedMotion.matches) { apply(); return; }
+
+    // Light bursts out of the button; dark falls from the top like a curtain.
+    let clipPath;
+    if (next === 'light') {
+      const r = themeBtn.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      const radius = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+      clipPath = [`circle(0px at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`];
+    } else {
+      clipPath = ['inset(0 0 100% 0)', 'inset(0 0 0 0)'];
+    }
+    document.startViewTransition(apply).ready.then(() => {
+      document.documentElement.animate({ clipPath }, {
+        duration: next === 'light' ? 650 : 750,
+        easing: next === 'light' ? 'cubic-bezier(0.2, 0.7, 0.3, 1)' : 'cubic-bezier(0.6, 0, 0.3, 1)',
+        pseudoElement: '::view-transition-new(root)',
+      });
+    });
   });
   systemDark.addEventListener('change', showTheme);
   showTheme();

@@ -271,6 +271,11 @@ pre { overflow: auto; white-space: pre; }
 .pane-actions { display: flex; gap: var(--space-sm); }
 #completion[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 
+/* Theme switch animation: the new theme is revealed by a clip-path set in app.js */
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { z-index: 1; }
+
 .theme-toggle {
   gap: var(--space-xs);
   margin-bottom: var(--space-xl);
