@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>(No)SQLearn — SQL ⇄ MongoDB translator</title>
+  <meta name="description" content="Translate SQL queries to MongoDB shell commands and back, with notes on how each part maps.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1>(No)SQLearn</h1>
+    <p class="tagline">Write SQL, get MongoDB — or the other way around.</p>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <fieldset class="direction">
+        <legend class="visually-hidden">Translation direction</legend>
+        <label><input type="radio" name="dir" value="auto" checked> Auto-detect</label>
+        <label><input type="radio" name="dir" value="sql"> SQL → MongoDB</label>
+        <label><input type="radio" name="dir" value="mongo"> MongoDB → SQL</label>
+      </fieldset>
+      <label class="examples">
+        <span class="visually-hidden">Examples</span>
+        <select id="examples">
+          <option value="">Load an example…</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="panes">
+      <section class="pane">
+        <div class="pane-head">
+          <h2 id="input-label">SQL</h2>
+          <button type="button" id="clear">Clear</button>
+        </div>
+        <textarea id="input" spellcheck="false" autocomplete="off" aria-labelledby="input-label"
+          placeholder="Paste a SQL query or a MongoDB command, e.g.&#10;SELECT name FROM users WHERE age > 30"></textarea>
+      </section>
+
+      <button type="button" id="swap" class="swap" title="Use the result as the new input">⇄</button>
+
+      <section class="pane">
+        <div class="pane-head">
+          <h2 id="output-label">MongoDB</h2>
+          <button type="button" id="copy">Copy</button>
+        </div>
+        <pre id="output" aria-live="polite" aria-labelledby="output-label"></pre>
+        <div id="error" class="error" role="alert" hidden></div>
+      </section>
+    </div>
+
+    <section id="notes" class="notes" hidden>
+      <h2>How it maps</h2>
+      <ul></ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    Supports a practical subset: SELECT (WHERE, ORDER BY, LIMIT, GROUP BY, HAVING, INNER/LEFT JOIN),
+    INSERT, UPDATE, DELETE ⇄ find, countDocuments, distinct, aggregate, insert*, update*, delete*.
+  </footer>
+
+  <script src="js/sql-to-mongo.js"></script>
+  <script src="js/mongo-to-sql.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
