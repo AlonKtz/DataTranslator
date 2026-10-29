@@ -10,7 +10,9 @@
 </head>
 <body>
   <header class="site-header">
-    <button type="button" id="theme" class="theme-toggle">☾ Dark mode</button>
+    <button type="button" id="theme" class="theme-toggle" role="switch" aria-checked="false" aria-label="Dark mode">
+      <span class="opt-light">☀ Light</span><span class="opt-dark">☾ Dark</span>
+    </button>
     <h1>(No)SQLearn</h1>
     <p class="tagline">Write SQL, get MongoDB — or the other way around.</p>
   </header>

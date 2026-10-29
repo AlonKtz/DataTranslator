@@ -1,26 +1,26 @@
-/* (No)SQLearn — drop-in replacement for css/style.css (design system: pill buttons, tinted bands, blue primary) */
+/* (No)SQLearn — pill buttons, tinted bands; olive and brown fall palette in both themes */
 @import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&display=swap");
 
 :root {
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --band: #eef2f7;
-  --code-bg: #fbfcfd;
-  --text: #1c2430;
-  --muted: #5d6b7c;
-  --border: #d8dee6;
-  --border-strong: #7d8896;
-  --accent: #1858d0;
+  --bg: #f1e8d6;
+  --surface: #fffaf0;
+  --band: #e3d6b8;
+  --code-bg: #fffdf6;
+  --text: #33271b;
+  --muted: #6b5a45;
+  --border: #d6c6a3;
+  --border-strong: #93805f;
+  --accent: #5b6a22;
   --accent-text: #ffffff;
-  --error-bg: #fdecec;
-  --error-text: #a3211f;
-  --syn-kw: #1858d0;
-  --syn-fn: #7a3eb1;
-  --syn-str: #1e7a3c;
-  --syn-num: #b4580a;
-  --syn-op: #b3245c;
-  --syn-key: #0b6e85;
-  --syn-com: #7d8896;
+  --error-bg: #f6dccf;
+  --error-text: #8c2410;
+  --syn-kw: #5b6a22;
+  --syn-fn: #7a4a24;
+  --syn-str: #9a4f2a;
+  --syn-num: #8a6410;
+  --syn-op: #9b3322;
+  --syn-key: #3d5e48;
+  --syn-com: #968670;
 
   --space-xs: 4px; --space-sm: 8px; --space-md: 12px; --space-lg: 16px;
   --space-xl: 24px; --space-2xl: 32px; --space-3xl: 48px; --space-4xl: 80px;
@@ -33,48 +33,48 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-      --bg: #11161d;
-      --surface: #18202a;
-      --band: #1d2632;
-      --code-bg: #141b23;
-      --text: #e3e8ee;
-      --muted: #9aa7b6;
-      --border: #2c3744;
-      --border-strong: #6b7887;
-      --accent: #8ab4f8;
-      --accent-text: #0e1a2e;
-      --error-bg: #3a1c1c;
-      --error-text: #ffb4b0;
-      --syn-kw: #8ab4f8;
-      --syn-fn: #d7aefb;
-      --syn-str: #8fd19e;
-      --syn-num: #f9b97a;
-      --syn-op: #f28fad;
-      --syn-key: #7fd4e6;
-      --syn-com: #7d8896;
+      --bg: #1a1511;
+      --surface: #231c16;
+      --band: #2c241c;
+      --code-bg: #1e1813;
+      --text: #efe6d6;
+      --muted: #b2a089;
+      --border: #3e3328;
+      --border-strong: #7f6c56;
+      --accent: #b9c46c;
+      --accent-text: #1d2108;
+      --error-bg: #3a1f17;
+      --error-text: #ffb9a1;
+      --syn-kw: #b9c46c;
+      --syn-fn: #e3a86b;
+      --syn-str: #dd9372;
+      --syn-num: #e9c873;
+      --syn-op: #f28a6b;
+      --syn-key: #9fc7a8;
+      --syn-com: #8a7a66;
       color-scheme: dark;
     }
 }
 :root[data-theme="dark"] {
-    --bg: #11161d;
-    --surface: #18202a;
-    --band: #1d2632;
-    --code-bg: #141b23;
-    --text: #e3e8ee;
-    --muted: #9aa7b6;
-    --border: #2c3744;
-    --border-strong: #6b7887;
-    --accent: #8ab4f8;
-    --accent-text: #0e1a2e;
-    --error-bg: #3a1c1c;
-    --error-text: #ffb4b0;
-    --syn-kw: #8ab4f8;
-    --syn-fn: #d7aefb;
-    --syn-str: #8fd19e;
-    --syn-num: #f9b97a;
-    --syn-op: #f28fad;
-    --syn-key: #7fd4e6;
-    --syn-com: #7d8896;
+    --bg: #1a1511;
+    --surface: #231c16;
+    --band: #2c241c;
+    --code-bg: #1e1813;
+    --text: #efe6d6;
+    --muted: #b2a089;
+    --border: #3e3328;
+    --border-strong: #7f6c56;
+    --accent: #b9c46c;
+    --accent-text: #1d2108;
+    --error-bg: #3a1f17;
+    --error-text: #ffb9a1;
+    --syn-kw: #b9c46c;
+    --syn-fn: #e3a86b;
+    --syn-str: #dd9372;
+    --syn-num: #e9c873;
+    --syn-op: #f28a6b;
+    --syn-key: #9fc7a8;
+    --syn-com: #8a7a66;
     color-scheme: dark;
 }
 
@@ -271,7 +271,14 @@ pre { overflow: auto; white-space: pre; }
 .pane-actions { display: flex; gap: var(--space-sm); }
 #completion[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 
-.theme-toggle { margin-bottom: var(--space-xl); }
+.theme-toggle {
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xl);
+  padding: var(--space-xs);
+}
+.theme-toggle span { padding: 2px 12px; border-radius: var(--radius-pill); color: var(--muted); }
+.theme-toggle[aria-checked="false"] .opt-light,
+.theme-toggle[aria-checked="true"] .opt-dark { background: var(--accent); color: var(--accent-text); }
 
 /* Swap: round icon button */
 .swap {

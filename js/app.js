@@ -70,8 +70,8 @@
   const currentTheme = () => document.documentElement.dataset.theme || (systemDark.matches ? 'dark' : 'light');
   function showTheme() {
     const dark = currentTheme() === 'dark';
-    themeBtn.textContent = dark ? '☀ Light mode' : '☾ Dark mode';
-    themeBtn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+    themeBtn.setAttribute('aria-checked', String(dark));
+    themeBtn.title = dark ? 'Dark mode is on. Click for light mode' : 'Light mode is on. Click for dark mode';
   }
   themeBtn.addEventListener('click', () => {
     const next = currentTheme() === 'dark' ? 'light' : 'dark';
