@@ -2594,12 +2594,51 @@
     fail('Unsupported statement');
   }
 
+  const GLOSSARY = [
+    [['$project'], 'The SELECT list → $project; computed columns become expressions such as { $toUpper: "$city" }, and "$field" reads a field.'],
+    [['$switch'], 'CASE WHEN ... THEN ... ELSE ... END → $switch: each WHEN becomes a branch { case, then }, ELSE becomes default.'],
+    [['$cond'], 'CASE WHEN cond THEN a ELSE b END → $cond: { if, then, else }.'],
+    [['$toInt', '$toLong', '$toDouble', '$toDecimal', '$toString', '$toDate', '$toBool', '$convert'], 'CAST(x AS type) / x::type → $toInt, $toDouble, $toString, $toDate... (the target type picks the operator).'],
+    [['$toUpper', '$toLower'], 'UPPER / LOWER → $toUpper / $toLower.'],
+    [['$concat'], 'CONCAT(...) / a || b → $concat with the pieces in an array.'],
+    [['$substrCP'], 'SUBSTRING(s, start, len) → $substrCP (0-based start in MongoDB, 1-based in SQL).'],
+    [['$strLenCP'], 'LENGTH(s) → $strLenCP.'],
+    [['$trim', '$ltrim', '$rtrim'], 'TRIM → $trim.'],
+    [['$ifNull'], 'COALESCE(a, b) → $ifNull: [a, b].'],
+    [['$round', '$abs', '$ceil', '$floor'], 'Math functions ROUND / ABS / CEIL / FLOOR → $round / $abs / $ceil / $floor.'],
+    [['$add', '$subtract', '$multiply', '$divide', '$mod'], 'Arithmetic + - * / % → $add, $subtract, $multiply, $divide, $mod.'],
+    [['$year', '$month', '$dayOfMonth', '$hour', '$minute', '$second', '$dayOfWeek', '$week'], 'EXTRACT(YEAR / MONTH / DAY ... FROM date) → $year, $month, $dayOfMonth...'],
+    [['$dateTrunc'], 'DATE_TRUNC(unit, date) → $dateTrunc: { date, unit } (MongoDB 5.0+).'],
+    [['$dateToString'], 'TO_CHAR(date, format) → $dateToString with a %Y-%m-%d style format.'],
+    [['$sort'], 'ORDER BY → $sort with 1 (ASC) / -1 (DESC).'],
+    [['$limit'], 'LIMIT → $limit.'],
+    [['$skip'], 'OFFSET → $skip.'],
+    [['$rank', '$denseRank', '$documentNumber'], 'RANK() / DENSE_RANK() / ROW_NUMBER() → $rank / $denseRank / $documentNumber in $setWindowFields.'],
+    [['$shift'], 'LAG(x) / LEAD(x) → $shift with by: -1 / 1 (the previous / next document in sortBy order).'],
+    [['$sum', '$avg', '$min', '$max'], 'SUM / AVG / MIN / MAX → $sum / $avg / $min / $max.'],
+    [['$inc'], 'column = column + n → $inc.'],
+    [['$in'], 'IN (...) → $in.'],
+    [['$regex'], 'LIKE / regex patterns → $regex.'],
+  ];
+
+  // Explains each operator in the translation that the notes above haven't covered yet.
+  function glossaryNotes(text, notes) {
+    const pattern = (op) => new RegExp(op.replace('$', '\\$') + '(?!\\w)');
+    const extra = [];
+    for (const [ops, note] of GLOSSARY) {
+      const used = ops.filter((op) => pattern(op).test(text));
+      if (used.length && !used.some((op) => notes.some((n) => pattern(op).test(n)))) extra.push(note);
+    }
+    return extra;
+  }
+
   function translate(src) {
     const stmts = new Parser(tokenize(src)).parseAll();
     if (!stmts.length) fail('Nothing to translate');
     const env = { ctes: new Map(), notes: [], subCount: 0 };
     const output = stmts.map((s) => translateStatement(s, env)).join('\n\n');
-    return { output, notes: [...new Set(env.notes)] };
+    const notes = [...new Set(env.notes)];
+    return { output, notes: notes.concat(glossaryNotes(output, notes)) };
   }
 
   return { translate, TranslateError };

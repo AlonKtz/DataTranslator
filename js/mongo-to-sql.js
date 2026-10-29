@@ -1552,12 +1552,63 @@
     }
   }
 
+  const GLOSSARY = [
+    [['$project', '$addFields'], '$project / $addFields → the SELECT column list; "$field" references become column names.'],
+    [['$match'], '$match → WHERE.'],
+    [['$sort'], '$sort → ORDER BY (1 = ASC, -1 = DESC).'],
+    [['$limit'], '$limit → LIMIT.'],
+    [['$skip'], '$skip → OFFSET.'],
+    [['$count'], '$count → SELECT COUNT(*).'],
+    [['$eq', '$ne', '$gt', '$gte', '$lt', '$lte'], '$eq / $ne / $gt / $gte / $lt / $lte → = / <> / > / >= / < / <=.'],
+    [['$in', '$nin'], '$in / $nin → IN / NOT IN.'],
+    [['$or', '$and', '$nor', '$not'], '$or / $and / $nor / $not → OR / AND / NOT (... OR ...) / NOT.'],
+    [['$regex'], '$regex → LIKE when the pattern is simple, otherwise a regex match (~ in PostgreSQL).'],
+    [['$exists'], '$exists → IS [NOT] NULL.'],
+    [['$cond', '$switch'], '$cond / $switch → CASE WHEN ... THEN ... ELSE ... END.'],
+    [['$ifNull'], '$ifNull → COALESCE.'],
+    [['$concat'], '$concat → || (string concatenation).'],
+    [['$toUpper', '$toLower'], '$toUpper / $toLower → UPPER / LOWER.'],
+    [['$substrCP', '$substr'], '$substrCP → SUBSTRING (SQL positions start at 1).'],
+    [['$toInt', '$toLong', '$toDouble', '$toDecimal', '$toString', '$toDate', '$toBool', '$convert'], '$toInt / $toDouble / $toString ... → CAST(x AS type).'],
+    [['$add', '$subtract', '$multiply', '$divide', '$mod'], '$add / $subtract / $multiply / $divide / $mod → + - * / %.'],
+    [['$round', '$abs', '$ceil', '$floor'], '$round / $abs / $ceil / $floor → ROUND / ABS / CEIL / FLOOR.'],
+    [['$year', '$month', '$dayOfMonth', '$hour', '$minute', '$second', '$dayOfWeek', '$week'], '$year / $month / $dayOfMonth ... → EXTRACT(YEAR / MONTH / DAY FROM date).'],
+    [['$dateTrunc'], '$dateTrunc → DATE_TRUNC.'],
+    [['$sum', '$avg', '$min', '$max', '$first', '$last'], 'Accumulators $sum / $avg / $min / $max → SUM / AVG / MIN / MAX ($first / $last need an ORDER BY).'],
+    [['$push', '$addToSet'], '$push / $addToSet → ARRAY_AGG / ARRAY_AGG(DISTINCT) in a query, or ARRAY_APPEND in an update.'],
+    [['$rank', '$denseRank', '$documentNumber'], '$rank / $denseRank / $documentNumber → RANK() / DENSE_RANK() / ROW_NUMBER() OVER (...).'],
+    [['$shift'], '$shift → LAG (by: -1) / LEAD (by: 1).'],
+    [['$size'], '$size → CARDINALITY(array).'],
+    [['$all'], '$all → array @> ARRAY[...] (contains every value).'],
+    [['$elemMatch'], '$elemMatch → EXISTS (SELECT 1 FROM UNNEST(array) ...).'],
+    [['$set'], 'Update $set → SET column = value.'],
+    [['$unset'], 'Update $unset → SET column = NULL.'],
+    [['$setOnInsert'], '$setOnInsert → values used only in the INSERT branch of MERGE.'],
+    [['bsonType'], 'bsonType → column types: string → TEXT / VARCHAR, int → INTEGER, double → DOUBLE PRECISION, date → TIMESTAMP, bool → BOOLEAN.'],
+    [['properties'], 'Each field in properties becomes a column; fields missing from required may be NULL.'],
+    [['maxLength'], 'maxLength: n → VARCHAR(n).'],
+    [['validator'], 'The validator only checks documents MongoDB writes; in SQL the column types and constraints always apply.'],
+    [['minimum', 'maximum', 'enum'], 'minimum / maximum / enum → CHECK (col >= x), CHECK (col <= y), CHECK (col IN (...)).'],
+  ];
+
+  // Explains each operator in the translation that the notes above haven't covered yet.
+  function glossaryNotes(text, notes) {
+    const pattern = (op) => new RegExp(op.replace('$', '\\$') + '(?!\\w)');
+    const extra = [];
+    for (const [ops, note] of GLOSSARY) {
+      const used = ops.filter((op) => pattern(op).test(text));
+      if (used.length && !used.some((op) => notes.some((n) => pattern(op).test(n)))) extra.push(note);
+    }
+    return extra;
+  }
+
   function translate(src) {
     const stmts = new Parser(tokenize(src)).program();
     if (!stmts.length) fail('Nothing to translate');
     const notes = [];
     const output = stmts.map((st) => translateStatement(st, notes)).filter((s) => s !== null).join('\n\n');
-    return { output, notes: [...new Set(notes)] };
+    const unique = [...new Set(notes)];
+    return { output, notes: unique.concat(glossaryNotes(src, unique)) };
   }
 
   return { translate, TranslateError };
