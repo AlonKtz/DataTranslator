@@ -69,6 +69,17 @@ or you can pick it yourself. The examples menu is grouped by level.
 | `ALTER TABLE ADD / DROP / RENAME COLUMN`, `RENAME TO` | `updateMany` with `$set / $unset / $rename`, `renameCollection()` |
 | `BEGIN / COMMIT / ROLLBACK`, `USE`, `SHOW TABLES` | session transactions, `use`, `show collections` |
 
+### Optimizations (SQL → MongoDB)
+
+The generated pipelines are optimized rather than translated clause by clause:
+
+- **Group before join:** `GROUP BY` over an `INNER JOIN` on the join key groups the aggregated table first and runs
+  `$lookup` once per group instead of once per row. `HAVING` also runs before the join. This assumes the joined key is
+  unique (an `_id` or primary key), and the notes say so.
+- **Filter before join:** `WHERE` conditions on the main table alone run in a `$match` before `$lookup`.
+- **Merged stages:** adjacent `$match` stages become one.
+- **Compact output:** each stage stays on one line when it fits, and long ones wrap with aligned continuation lines.
+
 Not supported: recursive CTEs (`$graphLookup`), `FULL OUTER JOIN`, `INTERSECT / EXCEPT`, geospatial queries and `$where`.
 These produce a clear error message rather than a wrong translation.
 Where databases differ, the output uses PostgreSQL syntax and the notes say so.

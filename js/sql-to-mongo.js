@@ -1034,17 +1034,44 @@
   }
 
   const WIDTH = 80;
-  function fmt(v, indent = 0) {
+  // `col` is the column the value starts at, `indent` the indentation of its line. A value that
+  // doesn't fit on one line keeps as many entries per line as fit, with continuation lines aligned
+  // under the first entry. When an entry itself needs several lines, it falls back to one entry
+  // per line instead.
+  function fmt(v, col = 0, indent = col, pack = true) {
     const f = flat(v);
-    if (indent + f.length <= WIDTH || !(Array.isArray(v) || isPlain(v))) return f;
+    if (col + f.length <= WIDTH || !(Array.isArray(v) || isPlain(v))) return f;
+    const arr = Array.isArray(v);
+    const items = arr ? v.map((x) => ['', x]) : Object.entries(v).map(([k, x]) => [key(k) + ': ', x]);
+    const open = arr ? '[' : '{ ', close = arr ? ']' : ' }';
+    const start = col + open.length;
+    const lines = [];
+    let cur = '', packed = pack && start <= WIDTH / 2;
+    items.forEach(([k, x], i) => {
+      if (!packed) return;
+      const tail = i === items.length - 1 ? close.length : 1;
+      if (cur) {
+        const lastLine = cur.slice(cur.lastIndexOf('\n') + 1);
+        const at = (cur.includes('\n') ? 0 : start) + lastLine.length + 2;
+        const text = k + flat(x);
+        if (!cur.includes('\n') && at + text.length + tail <= WIDTH) { cur += ', ' + text; return; }
+        lines.push(cur);
+      }
+      cur = k + fmt(x, start + k.length, start);
+      // A nested value may wrap the same way, but not fall back to one entry per line.
+      if (/[[{]\n/.test(cur)) packed = false;
+    });
+    if (packed) return open + [...lines, cur].join(',\n' + ' '.repeat(start)) + close;
     const pad = ' '.repeat(indent), inner = ' '.repeat(indent + 2);
-    if (Array.isArray(v)) return '[\n' + v.map((x) => inner + fmt(x, indent + 2)).join(',\n') + '\n' + pad + ']';
-    return '{\n' + Object.entries(v).map(([k, x]) => inner + key(k) + ': ' + fmt(x, indent + 2)).join(',\n') + '\n' + pad + '}';
+    return (arr ? '[' : '{') + '\n' + items.map(([k, x]) => inner + k + fmt(x, indent + 2 + k.length, indent + 2)).join(',\n') +
+      '\n' + pad + (arr ? ']' : '}');
   }
 
+  // Call arguments start mid-line, so their outer braces always open onto their own lines.
+  const fmtTop = (v) => fmt(v, 0, 0, false);
   const fmtPipeline = (stages) => (stages.length ? '[\n' + stages.map((s) => '  ' + fmt(s, 2)).join(',\n') + '\n]' : '[]');
   const collection = (name) => (/^[A-Za-z_][\w]*$/.test(name) ? 'db.' + name : `db.getCollection(${JSON.stringify(name)})`);
-  const args = (...list) => list.filter((a) => a !== undefined).map((a) => fmt(a)).join(', ');
+  const args = (...list) => list.filter((a) => a !== undefined).map(fmtTop).join(', ');
 
   // ---------------------------------------------------------------- shared helpers
 
@@ -1729,10 +1756,25 @@
     const grouped = q.groupBy.length > 0 || q.distinct || !!q.having ||
       q.columns.some((c) => !c.star && containsAgg(c.expr)) || q.orderBy.some((o) => containsAgg(o.expr));
 
+    // WHERE conditions on the main collection alone run before the joins, so fewer documents get joined.
+    let early = null, late = q.where;
+    if (q.where && q.joins.length && !containsSub(q.where)) {
+      const items = q.where.type === 'and' ? q.where.items : [q.where];
+      const touches = items.map((item) => { scope.joinTouched = false; toFilter(item, ctx); return scope.joinTouched; });
+      const pick = (want) => {
+        const list = items.filter((_, i) => touches[i] === want);
+        return list.length === 0 ? null : list.length === 1 ? list[0] : { type: 'and', items: list };
+      };
+      early = pick(false);
+      late = pick(true);
+      if (early && late) env.notes.push('Optimized: conditions on the main collection run in a $match before $lookup, so fewer documents are joined.');
+    }
     scope.joinTouched = false;
-    const filter = q.where ? toFilter(q.where, ctx) : null;
+    const earlyFilter = early ? toFilter(early, ctx) : null;
+    if (earlyFilter && !isEmpty(earlyFilter)) stages.push({ $match: earlyFilter });
+    const filter = late ? toFilter(late, ctx) : null;
     const whereStages = filter || ctx.pending.length ? flushPending(ctx, filter && !isEmpty(filter) ? { $match: filter } : null) : [];
-    if (filter) env.notes.push('WHERE → $match.');
+    if (filter || earlyFilter) env.notes.push('WHERE → $match.');
     const needsJoin = scope.joinTouched;
     if (!needsJoin) stages.push(...whereStages);
     for (const j of q.joins) stages.push(...lookupStages(j, scope, ctx));
@@ -1741,12 +1783,173 @@
     const hasWindow = q.columns.some((c) => !c.star && containsWindow(c.expr));
     if (grouped && hasWindow) fail('Window functions combined with GROUP BY are not supported — group in a subquery (FROM (SELECT ...)) first');
     let outputs;
-    if (grouped) outputs = groupStages(q, ctx, stages);
-    else {
+    if (grouped) {
+      outputs = groupStages(q, ctx, stages);
+      const better = !outer && !src.query && groupBeforeJoin(q, coll, stages, env);
+      if (better) { coll = better.coll; stages.splice(0, stages.length, ...better.stages); }
+    } else {
       if (hasWindow) stages.push(...windowStages(q, ctx));
       outputs = projectStages(q, ctx, stages);
     }
-    return { coll, stages, outputs };
+    return { coll, stages: mergeMatches(stages), outputs };
+  }
+
+  // ---------------------------------------------------------------- pipeline optimizations
+
+  // Adjacent $match stages become one.
+  function mergeMatches(stages) {
+    const out = [];
+    for (const s of stages) {
+      const prev = out[out.length - 1];
+      if (prev && isOnly(prev, '$match') && isOnly(s, '$match')) {
+        const a = prev.$match, b = s.$match;
+        const clash = Object.keys(b).some((k) => k in a);
+        out[out.length - 1] = { $match: clash ? { $and: [a, b] } : { ...a, ...b } };
+      } else out.push(s);
+    }
+    return out;
+  }
+
+  // Field paths read by an expression ("$a.b" -> "a.b"); $$variables are skipped.
+  function exprRefs(v, out = []) {
+    if (typeof v === 'string') { if (v.startsWith('$') && !v.startsWith('$$')) out.push(v.slice(1)); }
+    else if (Array.isArray(v)) v.forEach((x) => exprRefs(x, out));
+    else if (isPlain(v)) Object.values(v).forEach((x) => exprRefs(x, out));
+    return out;
+  }
+  function mapExpr(v, map) {
+    if (typeof v === 'string') return v.startsWith('$') && !v.startsWith('$$') ? '$' + map(v.slice(1)) : v;
+    if (Array.isArray(v)) return v.map((x) => mapExpr(x, map));
+    if (isPlain(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, mapExpr(x, map)]));
+    return v;
+  }
+  // Splits a $match filter into single-condition pieces ($and is flattened).
+  function matchUnits(m) {
+    return Object.entries(m).flatMap(([k, v]) => (k === '$and' ? v.flatMap(matchUnits) : [{ [k]: v }]));
+  }
+  // The field paths a filter piece depends on, or null when it can't be analysed.
+  function matchRefs(u) {
+    const [[k, v]] = Object.entries(u);
+    if (k === '$expr') return exprRefs(v);
+    if (k === '$or' || k === '$nor') {
+      const parts = v.map((m) => matchUnits(m).map(matchRefs));
+      return parts.flat(2).includes(null) ? null : parts.flat(2);
+    }
+    return k.startsWith('$') ? null : [k];
+  }
+  function mapMatch(m, map) {
+    return Object.fromEntries(Object.entries(m).map(([k, v]) => {
+      if (k === '$expr') return [k, mapExpr(v, map)];
+      if (k === '$and' || k === '$or' || k === '$nor') return [k, v.map((x) => mapMatch(x, map))];
+      return [map(k), v];
+    }));
+  }
+  const andMatch = (units) => (units.length ? [{ $match: units.reduce((acc, u) => mergeMatches([{ $match: acc }, { $match: u }])[0].$match, {}) }] : []);
+
+  // GROUP BY over an inner join: group the table being aggregated first, then join the other one
+  // (one $lookup per group instead of one per row). Returns null when the rewrite doesn't apply.
+  function groupBeforeJoin(q, coll, stages, env) {
+    if (q.joins.length !== 1 || !q.groupBy.length) return null;
+    const j = q.joins[0];
+    if (j.kind !== 'inner' || j.table.unnest || j.table.lateral || source(j.table, env).query) return null;
+    const gi = stages.findIndex((s) => isOnly(s, '$group'));
+    const li = stages.findIndex((s) => isOnly(s, '$lookup'));
+    if (gi < 0 || li < 0 || gi < li) return null;
+    const L = stages[li].$lookup, A = L.as;
+    if (!L.localField || stages[li + 1].$unwind !== '$' + A) return null;
+    const before = [...stages.slice(0, li), ...stages.slice(li + 2, gi)];
+    if (!before.every((s) => isOnly(s, '$match'))) return null;
+    const G = stages[gi].$group, rest = stages.slice(gi + 1);
+    if (G._id === null || typeof G._id !== 'string' && !isPlain(G._id)) return null;
+
+    const onJoined = (p) => p === A || p.startsWith(A + '.');
+    const sideOf = (refs) => {
+      const sides = new Set(refs.map((p) => (onJoined(p) ? 'J' : 'B')));
+      return sides.size > 1 ? null : sides.size ? [...sides][0] : '';
+    };
+    // The "fact" side is the one the aggregates read; the other ("dim") side is joined afterwards.
+    const accRefs = Object.entries(G).filter(([k]) => k !== '_id').flatMap(([, v]) => exprRefs(v));
+    const accSide = sideOf(accRefs);
+    if (accSide === null || accRefs.includes(A)) return null;
+    const fact = accSide || 'B';
+    const bAlias = q.from.alias || coll;
+    const factMap = fact === 'J' ? (p) => p.slice(A.length + 1) : (p) => p;
+    const dimMap = fact === 'J' ? (p) => bAlias + '.' + p : (p) => p;
+    const factKey = fact === 'J' ? A + '.' + L.foreignField : L.localField;
+    const dimKey = fact === 'J' ? L.localField : A + '.' + L.foreignField;
+    const dimAs = fact === 'J' ? bAlias : A;
+
+    // Group keys: dim-side join key -> fact-side join key; other dim columns are read after the join.
+    const single = typeof G._id === 'string';
+    const entries = single ? [['', G._id]] : Object.entries(G._id);
+    const newId = {}, dimFields = {};
+    let keyName = null;
+    for (const [name, v] of entries) {
+      const side = sideOf(exprRefs(v));
+      if (side === null) return null;
+      if (side === (fact === 'J' ? 'B' : 'J')) {
+        if (typeof v !== 'string') return null;
+        const path = v.slice(1);
+        if (path === dimKey) { newId[name] = '$' + factMap(factKey); keyName = name; }
+        else dimFields[name] = dimMap(path);
+      } else {
+        newId[name] = mapExpr(v, factMap);
+        if (v === '$' + factKey) keyName = name;
+      }
+    }
+    if (keyName === null || (single && Object.keys(dimFields).length)) return null;
+
+    const factUnits = [], dimUnits = [];
+    for (const u of before.flatMap((s) => matchUnits(s.$match))) {
+      const refs = matchRefs(u);
+      const side = refs && sideOf(refs);
+      if (!side) return null;
+      if (side === fact) factUnits.push(mapMatch(u, factMap)); else dimUnits.push(mapMatch(u, dimMap));
+    }
+
+    // Later stages read dropped group keys ("$_id.name") from the joined document instead, and when
+    // only the join key is left, _id becomes that value itself.
+    const dropped = Object.keys(dimFields);
+    const collapse = !single && Object.keys(newId).length === 1;
+    const under = (p, n) => p === '_id.' + n || p.startsWith('_id.' + n + '.');
+    const dimPath = (p) => dropped.some((d) => under(p, d));
+    const fixPath = (p) => {
+      const n = dropped.find((d) => under(p, d));
+      if (n) return dimFields[n] + p.slice(4 + n.length);
+      return collapse && under(p, keyName) ? '_id' + p.slice(4 + keyName.length) : p;
+    };
+    const fixStage = (s) => {
+      const [[op, body]] = Object.entries(s);
+      if (op === '$match') return { $match: mapMatch(body, fixPath) };
+      if (op === '$sort') return { $sort: Object.fromEntries(Object.entries(body).map(([k, d]) => [fixPath(k), d])) };
+      return { [op]: mapExpr(body, fixPath) };
+    };
+    if ((dropped.length || collapse) && rest.some((s) => exprRefs(s).includes('_id'))) return null;
+    let lead = 0;
+    while (lead < rest.length && isOnly(rest[lead], '$match') && !exprRefs(rest[lead]).concat(Object.keys(rest[lead].$match)).some(dimPath)) lead++;
+
+    const group = { _id: single ? newId[''] : collapse ? Object.values(newId)[0] : newId, ...Object.fromEntries(Object.entries(G).filter(([k]) => k !== '_id').map(([k, v]) => [k, mapExpr(v, factMap)])) };
+    const lookup = {
+      from: fact === 'J' ? coll : L.from,
+      localField: single || collapse ? '_id' : '_id.' + keyName,
+      foreignField: fact === 'J' ? L.localField : L.foreignField,
+      as: dimAs,
+    };
+    const dimTable = fact === 'J' ? q.from.name || coll : j.table.name || L.from;
+    env.notes.push(`Optimized: $group runs before $lookup, so ${lookup.from} is joined once per group instead of once per row. ` +
+      `This assumes ${dimTable}.${lookup.foreignField} is unique (true for _id or a primary key).`);
+    return {
+      coll: fact === 'J' ? L.from : coll,
+      stages: [
+        ...andMatch(factUnits),
+        { $group: group },
+        ...rest.slice(0, lead).map(fixStage),
+        { $lookup: lookup },
+        { $unwind: '$' + dimAs },
+        ...andMatch(dimUnits),
+        ...rest.slice(lead).map(fixStage),
+      ],
+    };
   }
 
   function compileUnion(q, env, outer) {
@@ -2135,7 +2338,7 @@
         if (only && !q.distinct && isCountAll(only)) {
           env.notes.push('COUNT(*) without GROUP BY → countDocuments().');
           const f = where(q, ctx);
-          return `${coll}.countDocuments(${isEmpty(f) ? '' : fmt(f)})`;
+          return `${coll}.countDocuments(${isEmpty(f) ? '' : fmtTop(f)})`;
         }
         if (only && q.distinct && only.type === 'col' && !q.orderBy.length && q.limit == null && q.offset == null) {
           env.notes.push('SELECT DISTINCT on one column → distinct(), which returns an array of the unique values.');
@@ -2170,9 +2373,9 @@
       else if (isEmpty(proj)) proj._id = 1;
     }
     ctx.notes.push('SELECT → find(filter, projection); WHERE becomes the filter, the column list becomes the projection.');
-    let out = `${coll}.find(${isEmpty(filter) && !proj ? '' : fmt(filter)}${proj ? ', ' + fmt(proj) : ''})`;
+    let out = `${coll}.find(${isEmpty(filter) && !proj ? '' : fmtTop(filter)}${proj ? ', ' + fmtTop(proj) : ''})`;
     if (sort.pre) {
-      out += `.sort(${fmt(sort.pre)})`;
+      out += `.sort(${fmtTop(sort.pre)})`;
       ctx.notes.push('ORDER BY → sort() with 1 (ASC) / -1 (DESC).');
     }
     if (q.offset != null) out += `.skip(${q.offset})`;
@@ -2215,7 +2418,7 @@
     const docs = rowDocs(q);
     if (q.conflict || q.replace) return translateUpsert(q, docs, notes);
     notes.push('Each row becomes a document; MongoDB adds an _id automatically if you don\'t provide one.');
-    return docs.length === 1 ? `${coll}.insertOne(${fmt(docs[0])})` : `${coll}.insertMany(${fmt(docs)})`;
+    return docs.length === 1 ? `${coll}.insertOne(${fmtTop(docs[0])})` : `${coll}.insertMany(${fmtTop(docs)})`;
   }
 
   function translateUpsert(q, docs, notes) {
@@ -2266,7 +2469,7 @@
       return `${coll}.${o.method}(${args(o.filter, o.update, { upsert: true })})`;
     }
     notes.push('Several rows → bulkWrite() with one upsert per row.');
-    return `${coll}.bulkWrite(${fmt(ops.map((o) => ({ [o.method]: o.method === 'replaceOne' ? { filter: o.filter, replacement: o.update, upsert: true } : { filter: o.filter, update: o.update, upsert: true } })))})`;
+    return `${coll}.bulkWrite(${fmtTop(ops.map((o) => ({ [o.method]: o.method === 'replaceOne' ? { filter: o.filter, replacement: o.update, upsert: true } : { filter: o.filter, update: o.update, upsert: true } })))})`;
   }
 
   // `col = col + n` style assignments map to $inc / $mul.
@@ -2352,11 +2555,11 @@
     const coll = collection(q.table.name);
     if (q.returning) {
       notes.push('DELETE ... RETURNING → findOneAndDelete() returns the removed document (one at a time).');
-      return `${coll}.findOneAndDelete(${fmt(filter)})`;
+      return `${coll}.findOneAndDelete(${fmtTop(filter)})`;
     }
     const method = q.limit === 1 ? 'deleteOne' : 'deleteMany';
     notes.push(`DELETE → ${method}(filter).`);
-    return `${coll}.${method}(${fmt(filter)})`;
+    return `${coll}.${method}(${fmtTop(filter)})`;
   }
 
   // ---------------------------------------------------------------- DDL
@@ -2490,7 +2693,7 @@
           notes.push('RENAME COLUMN → $rename on every document.');
           break;
         case 'renameTable':
-          lines.push(`${coll}.renameCollection(${fmt(a.to)})`);
+          lines.push(`${coll}.renameCollection(${fmtTop(a.to)})`);
           break;
         case 'unique':
           lines.push(`${coll}.createIndex(${args(Object.fromEntries(a.cols.map((c) => [c, 1])), { unique: true })})`);

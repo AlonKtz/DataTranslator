@@ -45,11 +45,11 @@ const exact = {
     S('SELECT name, price * 1.17 AS with_vat FROM products ORDER BY with_vat DESC',
       'db.products.aggregate([\n  { $project: { name: 1, with_vat: { $multiply: ["$price", 1.17] }, _id: 0 } },\n  { $sort: { with_vat: -1 } }\n])'),
     S("SELECT name, CASE WHEN age < 18 THEN 'minor' ELSE 'adult' END AS bracket FROM users",
-      'db.users.aggregate([\n  {\n    $project: {\n      name: 1,\n      bracket: { $cond: [{ $lt: ["$age", 18] }, "minor", "adult"] },\n      _id: 0\n    }\n  }\n])'),
+      'db.users.aggregate([\n  { $project: { name: 1,\n                bracket: { $cond: [{ $lt: ["$age", 18] }, "minor", "adult"] },\n                _id: 0 } }\n])'),
     S("SELECT CAST(price AS INT) AS p, data->>'color' AS color FROM products WHERE data->>'size' = 'L'",
       'db.products.aggregate([\n  { $match: { "data.size": "L" } },\n  { $project: { p: { $toInt: "$price" }, color: "$data.color", _id: 0 } }\n])'),
     S("SELECT * FROM events WHERE created_at > NOW() - INTERVAL '7 days'",
-      'db.events.find({\n  $expr: {\n    $gt: [\n      "$created_at",\n      { $dateSubtract: { startDate: "$$NOW", unit: "day", amount: 7 } }\n    ]\n  }\n})'),
+      'db.events.find({\n  $expr: { $gt: ["$created_at",\n                 { $dateSubtract: { startDate: "$$NOW", unit: "day", amount: 7 } }] }\n})'),
 
     M('db.orders.aggregate([{ $match: { status: "shipped" } }, { $group: { _id: "$customerId", total: { $sum: "$amount" } } }, { $match: { total: { $gt: 500 } } }, { $sort: { total: -1 } }, { $limit: 5 }])',
       "SELECT customerId, SUM(amount) AS total\nFROM orders\nWHERE status = 'shipped'\nGROUP BY customerId\nHAVING SUM(amount) > 500\nORDER BY total DESC\nLIMIT 5;"),
@@ -60,15 +60,15 @@ const exact = {
 
   advanced: [
     S("SELECT name FROM products WHERE category_id IN (SELECT _id FROM categories WHERE active = TRUE)",
-      'db.products.aggregate([\n  {\n    $lookup: {\n      from: "categories",\n      pipeline: [{ $match: { active: true } }, { $project: { _id: 1 } }],\n      as: "_sub1"\n    }\n  },\n  { $match: { $expr: { $in: ["$category_id", "$_sub1._id"] } } },\n  { $unset: "_sub1" },\n  { $project: { name: 1, _id: 0 } }\n])'),
+      'db.products.aggregate([\n  { $lookup: { from: "categories",\n               pipeline: [{ $match: { active: true } },\n                          { $project: { _id: 1 } }],\n               as: "_sub1" } },\n  { $match: { $expr: { $in: ["$category_id", "$_sub1._id"] } } },\n  { $unset: "_sub1" },\n  { $project: { name: 1, _id: 0 } }\n])'),
     S('SELECT day, amount, LAG(amount) OVER (ORDER BY day) AS prev FROM sales',
       'db.sales.aggregate([\n  {\n    $setWindowFields: {\n      sortBy: { day: 1 },\n      output: { prev: { $shift: { output: "$amount", by: -1, default: null } } }\n    }\n  },\n  { $project: { day: 1, amount: 1, prev: 1, _id: 0 } }\n])'),
     S('SELECT city FROM customers UNION ALL SELECT city FROM suppliers',
-      'db.customers.aggregate([\n  { $project: { city: 1, _id: 0 } },\n  {\n    $unionWith: { coll: "suppliers", pipeline: [{ $project: { city: 1, _id: 0 } }] }\n  }\n])'),
+      'db.customers.aggregate([\n  { $project: { city: 1, _id: 0 } },\n  { $unionWith: { coll: "suppliers",\n                  pipeline: [{ $project: { city: 1, _id: 0 } }] } }\n])'),
     S("INSERT INTO users (email, name, visits) VALUES ('a@x.com', 'Ann', 1) ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, visits = users.visits + 1",
       'db.users.updateOne({ email: "a@x.com" }, { $set: { name: "Ann" }, $inc: { visits: 1 } }, { upsert: true })'),
     S("SELECT * FROM posts WHERE 'mongo' = ANY(tags) AND tags @> ARRAY['db', 'nosql'] AND CARDINALITY(tags) = 3",
-      'db.posts.find({\n  $and: [\n    { tags: "mongo" },\n    { tags: { $all: ["db", "nosql"] } },\n    { tags: { $size: 3 } }\n  ]\n})'),
+      'db.posts.find({\n  $and: [{ tags: "mongo" }, { tags: { $all: ["db", "nosql"] } },\n         { tags: { $size: 3 } }]\n})'),
 
     M('db.orders.aggregate([{ $group: { _id: "$customerId", total: { $sum: "$amount" } } }, { $group: { _id: null, avgTotal: { $avg: "$total" } } }])',
       'SELECT AVG(total) AS avgTotal\nFROM (\n  SELECT customerId, SUM(amount) AS total\n  FROM orders\n  GROUP BY customerId\n) AS t1;'),
@@ -225,6 +225,20 @@ const coverage = {
     'use shop',
   ],
 };
+
+// ---------------------------------------------------------------- optimizations
+
+// Group before joining, filter before joining, and leave LEFT JOINs (which keep unmatched rows) alone.
+exact.optimized = [
+  S('SELECT s.customerId, c.customerName, SUM(s.shippingCost) AS Total_Cost FROM customers c JOIN shipments s ON c.customerId = s.customerId WHERE s.shippingCost IS NOT NULL GROUP BY s.customerId, c.customerName HAVING SUM(s.shippingCost) > 200 ORDER BY Total_Cost DESC',
+    'db.shipments.aggregate([\n  { $match: { shippingCost: { $ne: null } } },\n  { $group: { _id: "$customerId", Total_Cost: { $sum: "$shippingCost" } } },\n  { $match: { Total_Cost: { $gt: 200 } } },\n  { $lookup: { from: "customers", localField: "_id", foreignField: "customerId",\n               as: "c" } },\n  { $unwind: "$c" },\n  { $sort: { Total_Cost: -1 } },\n  { $project: { _id: 0, customerId: "$_id", customerName: "$c.customerName",\n                Total_Cost: 1 } }\n])'),
+  S('SELECT d.departmentId, d.departmentName, COUNT(*) AS studentCount FROM students s JOIN departments d ON s.departmentId = d.departmentId GROUP BY d.departmentId, d.departmentName HAVING COUNT(*) > 2',
+    'db.students.aggregate([\n  { $group: { _id: "$departmentId", studentCount: { $sum: 1 } } },\n  { $match: { studentCount: { $gt: 2 } } },\n  { $lookup: { from: "departments", localField: "_id",\n               foreignField: "departmentId", as: "d" } },\n  { $unwind: "$d" },\n  { $project: { _id: 0, departmentId: "$_id",\n                departmentName: "$d.departmentName", studentCount: 1 } }\n])'),
+  S('SELECT o.id, c.name FROM orders o JOIN customers c ON o.cid = c._id WHERE o.total > 100 AND c.active = TRUE',
+    'db.orders.aggregate([\n  { $match: { total: { $gt: 100 } } },\n  { $lookup: { from: "customers", localField: "cid", foreignField: "_id",\n               as: "c" } },\n  { $unwind: "$c" },\n  { $match: { "c.active": true } },\n  { $project: { id: 1, "c.name": 1, _id: 0 } }\n])'),
+  S('SELECT c.region, SUM(o.total) AS t FROM orders o LEFT JOIN customers c ON o.cid = c._id GROUP BY o.cid, c.region',
+    'db.orders.aggregate([\n  { $lookup: { from: "customers", localField: "cid", foreignField: "_id",\n               as: "c" } },\n  { $unwind: { path: "$c", preserveNullAndEmptyArrays: true } },\n  { $group: { _id: { cid: "$cid", region: "$c.region" }, t: { $sum: "$total" } } },\n  { $project: { _id: 0, region: "$_id.region", t: 1 } }\n])'),
+];
 
 // ---------------------------------------------------------------- clear errors for unsupported input
 
