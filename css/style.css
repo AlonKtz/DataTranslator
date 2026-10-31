@@ -1,26 +1,26 @@
-/* (No)SQLearn — pill buttons, tinted bands; olive and brown fall palette in both themes */
+/* (No)SQLearn — pill buttons, tinted bands; palette: Neon Mint #36ECDE, Core Navy #00203F, Soft Gray #E6E9EC, Graphite Black #2F2F2F */
 @import url("https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&display=swap");
 
 :root {
-  --bg: #f1e8d6;
-  --surface: #fffaf0;
-  --band: #e3d6b8;
-  --code-bg: #fffdf6;
-  --text: #33271b;
-  --muted: #6b5a45;
-  --border: #d6c6a3;
-  --border-strong: #93805f;
-  --accent: #5b6a22;
-  --accent-text: #ffffff;
-  --error-bg: #f6dccf;
-  --error-text: #8c2410;
-  --syn-kw: #5b6a22;
-  --syn-fn: #7a4a24;
-  --syn-str: #9a4f2a;
-  --syn-num: #8a6410;
-  --syn-op: #9b3322;
-  --syn-key: #3d5e48;
-  --syn-com: #968670;
+  --bg: #e6e9ec;
+  --surface: #f7f8f9;
+  --band: #d4dae0;
+  --code-bg: #ffffff;
+  --text: #00203f;
+  --muted: #4b5b6d;
+  --border: #c9d0d7;
+  --border-strong: #7a8795;
+  --accent: #00203f;
+  --accent-text: #36ecde;
+  --error-bg: #fbe3e3;
+  --error-text: #9b1c1c;
+  --syn-kw: #007a71;
+  --syn-fn: #2f4ea3;
+  --syn-str: #965600;
+  --syn-num: #b3361b;
+  --syn-op: #8a2f9e;
+  --syn-key: #00203f;
+  --syn-com: #7a8795;
 
   --space-xs: 4px; --space-sm: 8px; --space-md: 12px; --space-lg: 16px;
   --space-xl: 24px; --space-2xl: 32px; --space-3xl: 48px; --space-4xl: 80px;
@@ -33,48 +33,48 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-      --bg: #1a1511;
-      --surface: #231c16;
-      --band: #2c241c;
-      --code-bg: #1e1813;
-      --text: #efe6d6;
-      --muted: #b2a089;
-      --border: #3e3328;
-      --border-strong: #7f6c56;
-      --accent: #b9c46c;
-      --accent-text: #1d2108;
-      --error-bg: #3a1f17;
-      --error-text: #ffb9a1;
-      --syn-kw: #b9c46c;
-      --syn-fn: #e3a86b;
-      --syn-str: #dd9372;
-      --syn-num: #e9c873;
-      --syn-op: #f28a6b;
-      --syn-key: #9fc7a8;
-      --syn-com: #8a7a66;
+      --bg: #2f2f2f;
+      --surface: #002a52;
+      --band: #00203f;
+      --code-bg: #001a33;
+      --text: #e6e9ec;
+      --muted: #9fb0c2;
+      --border: #1c4068;
+      --border-strong: #5f7d9c;
+      --accent: #36ecde;
+      --accent-text: #00203f;
+      --error-bg: #4a1d24;
+      --error-text: #ffb4b0;
+      --syn-kw: #36ecde;
+      --syn-fn: #c3a6ff;
+      --syn-str: #ffd479;
+      --syn-num: #ffab70;
+      --syn-op: #ff8fc8;
+      --syn-key: #a6d8ff;
+      --syn-com: #7590ab;
       color-scheme: dark;
     }
 }
 :root[data-theme="dark"] {
-    --bg: #1a1511;
-    --surface: #231c16;
-    --band: #2c241c;
-    --code-bg: #1e1813;
-    --text: #efe6d6;
-    --muted: #b2a089;
-    --border: #3e3328;
-    --border-strong: #7f6c56;
-    --accent: #b9c46c;
-    --accent-text: #1d2108;
-    --error-bg: #3a1f17;
-    --error-text: #ffb9a1;
-    --syn-kw: #b9c46c;
-    --syn-fn: #e3a86b;
-    --syn-str: #dd9372;
-    --syn-num: #e9c873;
-    --syn-op: #f28a6b;
-    --syn-key: #9fc7a8;
-    --syn-com: #8a7a66;
+    --bg: #2f2f2f;
+    --surface: #002a52;
+    --band: #00203f;
+    --code-bg: #001a33;
+    --text: #e6e9ec;
+    --muted: #9fb0c2;
+    --border: #1c4068;
+    --border-strong: #5f7d9c;
+    --accent: #36ecde;
+    --accent-text: #00203f;
+    --error-bg: #4a1d24;
+    --error-text: #ffb4b0;
+    --syn-kw: #36ecde;
+    --syn-fn: #c3a6ff;
+    --syn-str: #ffd479;
+    --syn-num: #ffab70;
+    --syn-op: #ff8fc8;
+    --syn-key: #a6d8ff;
+    --syn-com: #7590ab;
     color-scheme: dark;
 }
 
