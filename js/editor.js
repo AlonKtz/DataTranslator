@@ -44,7 +44,11 @@
   const TOKEN = /(--[^\n]*|\/\/[^\n]*|\/\*[\s\S]*?(?:\*\/|$))|('(?:[^'\\]|\\[\s\S]|'')*'?|"(?:[^"\\]|\\[\s\S])*"?|`(?:[^`\\]|\\[\s\S])*`?)|(\b\d+(?:\.\d+)?\b)|(\$\$?[A-Za-z_][\w.]*)|([A-Za-z_]\w*)/g;
 
   const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const span = (cls, text) => `<span class="tok-${cls}">${escapeHtml(text)}</span>`;
+  // A token that spans lines gets one span per line, so the HTML can be split on newlines.
+  const span = (cls, text) => text.split('\n').map((t) => `<span class="tok-${cls}">${escapeHtml(t)}</span>`).join('\n');
+
+  // Wraps each line of highlighted HTML in its own block; CSS numbers them.
+  const lines = (html) => html.split('\n').map((l) => `<div class="line">${l || '<br>'}</div>`).join('');
 
   function wordClass(src, word, start, end, lang) {
     const after = src.slice(end).match(/^\s*(.)?/)[1];
@@ -112,7 +116,7 @@
     const wrap = document.createElement('div');
     wrap.className = 'editor';
     const layer = document.createElement('pre');
-    layer.className = 'hl';
+    layer.className = 'hl code';
     layer.setAttribute('aria-hidden', 'true');
     textarea.parentNode.insertBefore(wrap, textarea);
     wrap.append(layer, textarea);
@@ -124,10 +128,10 @@
       const v = textarea.value, lang = getLang();
       if (ghost) {
         const at = textarea.selectionStart;
-        layer.innerHTML = highlight(v.slice(0, at), lang) + `<span class="ghost">${escapeHtml(ghost)}</span>` +
-          highlight(v.slice(at), lang) + '\n ';
+        layer.innerHTML = lines(highlight(v.slice(0, at), lang) + `<span class="ghost">${escapeHtml(ghost)}</span>` +
+          highlight(v.slice(at), lang));
       } else {
-        layer.innerHTML = highlight(v, lang) + '\n ';
+        layer.innerHTML = lines(highlight(v, lang));
       }
       syncScroll();
     }
@@ -223,5 +227,5 @@
     };
   }
 
-  window.Editor = { highlight, attach, completionFor };
+  window.Editor = { highlight, lines, attach, completionFor };
 })();

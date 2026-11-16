@@ -5,16 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>(No)SQLearn — SQL ⇄ MongoDB translator</title>
   <meta name="description" content="Translate SQL queries to MongoDB shell commands and back, with notes on how each part maps.">
+  <meta name="theme-color" content="#00203f">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2300203f'/%3E%3Cpath d='M8 12h13l-3.5-3.5M24 20H11l3.5 3.5' fill='none' stroke='%2336ecde' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <script>try { var t = localStorage.getItem('nosqlearn.theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="site-header">
     <button type="button" id="theme" class="theme-toggle" role="switch" aria-checked="false" aria-label="Dark mode">
-      <span class="opt-light">☀ Light</span><span class="opt-dark">☾ Dark</span>
+      <span class="opt-light">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        Light
+      </span>
+      <span class="opt-dark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        Dark
+      </span>
     </button>
-    <h1>(No)SQLearn</h1>
+    <h1 aria-label="(No)SQLearn"><span class="no">(No)</span>SQLearn</h1>
     <p class="tagline">Write SQL, get MongoDB — or the other way around.</p>
+    <ul class="facts">
+      <li><span id="example-count">31</span> worked examples</li>
+      <li>Explains every mapping</li>
+      <li>Translates in your browser</li>
+    </ul>
   </header>
 
   <main>
@@ -33,42 +50,103 @@
       </label>
     </div>
 
-    <div class="panes">
+    <div class="panes" id="workbench">
       <section class="pane">
         <div class="pane-head">
-          <h2 id="input-label">SQL</h2>
+          <h2><span class="pane-role">Input</span><span id="input-label" class="lang" data-lang="sql">SQL</span></h2>
           <div class="pane-actions">
             <button type="button" id="completion" aria-pressed="true" title="Close brackets and quotes, keep indentation, and finish keywords as you type (Tab or → to accept)">Autocomplete: on</button>
             <button type="button" id="clear">Clear</button>
           </div>
         </div>
-        <textarea id="input" spellcheck="false" autocomplete="off" aria-labelledby="input-label"
+        <textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off" aria-labelledby="input-label"
           placeholder="Paste a SQL query or a MongoDB command, e.g.&#10;SELECT name FROM users WHERE age > 30"></textarea>
+        <div class="pane-foot">
+          <span id="input-stats"></span>
+          <span class="hint"><kbd>Ctrl</kbd> <kbd>Enter</kbd> translate now</span>
+        </div>
       </section>
 
-      <button type="button" id="swap" class="swap" title="Use the result as the new input">⇄</button>
+      <button type="button" id="swap" class="swap" title="Use the result as the new input" aria-label="Use the result as the new input">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h15l-4-4M20 16H5l4 4"/></svg>
+      </button>
 
       <section class="pane">
         <div class="pane-head">
-          <h2 id="output-label">MongoDB</h2>
-          <button type="button" id="copy">Copy</button>
+          <h2><span class="pane-role">Output</span><span id="output-label" class="lang" data-lang="mongo">MongoDB</span></h2>
+          <button type="button" id="copy">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+            <span>Copy</span>
+          </button>
         </div>
-        <pre id="output" aria-live="polite" aria-labelledby="output-label"></pre>
+        <div class="output-wrap">
+          <pre id="output" class="code" aria-live="polite" aria-labelledby="output-label"></pre>
+          <p id="empty" class="empty" hidden>The translation appears here as you type.</p>
+        </div>
         <div id="error" class="error" role="alert" hidden></div>
+        <div class="pane-foot">
+          <span id="status" class="status"></span>
+          <span id="output-stats"></span>
+        </div>
       </section>
     </div>
 
     <section id="notes" class="notes" hidden>
-      <h2>How it maps</h2>
+      <h2>How it maps <span id="notes-count" class="count"></span></h2>
       <ul></ul>
+    </section>
+
+    <section class="gallery" aria-labelledby="gallery-title">
+      <div class="section-head">
+        <div>
+          <h2 id="gallery-title">Learn by example</h2>
+          <p>Pick a query to load it into the editor and see how it translates.</p>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Example language">
+          <button type="button" role="tab" id="tab-sql" data-lang="SQL" aria-selected="true" aria-controls="gallery-list">SQL</button>
+          <button type="button" role="tab" id="tab-mongo" data-lang="MongoDB" aria-selected="false" aria-controls="gallery-list" tabindex="-1">MongoDB</button>
+        </div>
+      </div>
+      <div id="gallery-list" class="cards" role="tabpanel" aria-labelledby="tab-sql"></div>
+    </section>
+
+    <section class="coverage" aria-labelledby="coverage-title">
+      <div class="section-head">
+        <div>
+          <h2 id="coverage-title">What it covers</h2>
+          <p>From a first <code>SELECT</code> to window functions and schema changes. Array features use PostgreSQL syntax.</p>
+        </div>
+      </div>
+      <div class="levels">
+        <article data-level="Basic">
+          <h3>Basic</h3>
+          <p>Filters, sorting, limits and writes.</p>
+          <p class="pair"><code>SELECT … WHERE</code><span>⇄</span><code>find()</code></p>
+          <p class="pair"><code>INSERT / UPDATE / DELETE</code><span>⇄</span><code>insertOne / updateMany / deleteMany</code></p>
+        </article>
+        <article data-level="Intermediate">
+          <h3>Intermediate</h3>
+          <p>Grouping, joins, expressions and dates.</p>
+          <p class="pair"><code>GROUP BY … HAVING</code><span>⇄</span><code>$group + $match</code></p>
+          <p class="pair"><code>JOIN … ON</code><span>⇄</span><code>$lookup + $unwind</code></p>
+        </article>
+        <article data-level="Advanced">
+          <h3>Advanced</h3>
+          <p>Subqueries, CTEs, unions, windows, arrays and upserts.</p>
+          <p class="pair"><code>RANK() OVER (…)</code><span>⇄</span><code>$setWindowFields</code></p>
+          <p class="pair"><code>ON CONFLICT</code><span>⇄</span><code>{ upsert: true }</code></p>
+        </article>
+        <article data-level="Schema">
+          <h3>Schema</h3>
+          <p>Tables, indexes, views and transactions.</p>
+          <p class="pair"><code>CREATE TABLE</code><span>⇄</span><code>$jsonSchema</code></p>
+          <p class="pair"><code>BEGIN … COMMIT</code><span>⇄</span><code>session transactions</code></p>
+        </article>
+      </div>
     </section>
   </main>
 
   <footer class="site-footer">
-    Covers basic to advanced: filters, joins, GROUP BY, subqueries, CTEs, UNION, window functions, upserts,
-    arrays, DDL (tables, indexes, views) and transactions ⇄ find, aggregate pipelines ($lookup, $unwind,
-    $facet, $setWindowFields…), updates, indexes and $jsonSchema collections.
-    Array features use PostgreSQL syntax.
     <p class="credit">Built by Katz Entrepreneurship. Contact <a href="mailto:bykatz.business@gmail.com">bykatz.business@gmail.com</a> for further inquiries.</p>
     <p class="version">v1.1</p>
   </footer>

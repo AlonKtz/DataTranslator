@@ -15,6 +15,8 @@ or you can pick it yourself. The examples menu is grouped by level.
 - Separate multiple statements with `;` (SQL) or new lines (MongoDB)
 - **Autocomplete** (on by default, toggle in the input pane) closes brackets and quotes, keeps indentation on Enter,
   and offers the rest of the keyword, function, method or `$operator` you are typing: **Tab** or **→** accepts, **Esc** dismisses
+- Both panes show line numbers, and the bar under each pane shows the size of the query and whether it translated
+- **Learn by example** below the editor lists every example as a card, by language and level; click one to load it
 - The button above the title switches between light and dark mode (the default follows your system)
 
 ## What's supported

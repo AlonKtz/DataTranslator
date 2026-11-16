@@ -115,9 +115,49 @@
     return v === 'auto' ? detect(input.value) : v;
   }
 
+  // Code-like fragments of a note: { documents }, $operators, "strings", calls such as find() and SQL keywords.
+  const CODE = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}|\$\$?[A-Za-z_][\w.]*|"[^"]*"|\b[A-Za-z_][\w.]*\([^()]*\)|\b_id\b|\b[A-Z][A-Z_]+(?: [A-Z][A-Z_]+)*\b/g;
+  const NOT_CODE = new Set(['SQL', 'JSON', 'CTE', 'DDL']);
+  function noteItem(text) {
+    const li = document.createElement('li');
+    let last = 0;
+    for (const m of text.matchAll(CODE)) {
+      if (NOT_CODE.has(m[0])) continue;
+      const code = document.createElement('code');
+      code.textContent = m[0];
+      li.append(text.slice(last, m.index), code);
+      last = m.index + m[0].length;
+    }
+    li.append(text.slice(last));
+    return li;
+  }
+
   function renderNotes(notes) {
-    notesList.replaceChildren(...notes.map((n) => { const li = document.createElement('li'); li.textContent = n; return li; }));
+    notesList.replaceChildren(...notes.map(noteItem));
+    $('notes-count').textContent = notes.length ? String(notes.length) : '';
     notesBox.hidden = notes.length === 0;
+  }
+
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const lineCount = (text) => (text ? text.split('\n').length : 0);
+  const statusBox = $('status');
+  function showStatus(state, text) {
+    statusBox.dataset.state = state;
+    statusBox.textContent = text;
+  }
+
+  // The translated text; the output pane holds it as numbered, highlighted lines.
+  let lastOutput = '';
+  function showOutput(text, lang) {
+    const changed = text !== lastOutput;
+    lastOutput = text;
+    output.innerHTML = text ? window.Editor.lines(window.Editor.highlight(text, lang)) : '';
+    $('output-stats').textContent = text ? plural(lineCount(text), 'line') : '';
+    if (changed && text) {
+      output.classList.remove('fresh');
+      void output.offsetWidth; // restart the fade
+      output.classList.add('fresh');
+    }
   }
 
   function run() {
@@ -125,21 +165,30 @@
     const src = input.value;
     store.set(STORAGE_KEY, src);
     const dir = direction();
-    $('input-label').textContent = dir === 'mongo' ? 'MongoDB' : 'SQL';
-    $('output-label').textContent = dir === 'mongo' ? 'SQL' : 'MongoDB';
+    const inLabel = $('input-label'), outLabel = $('output-label');
+    inLabel.textContent = dir === 'mongo' ? 'MongoDB' : 'SQL';
+    outLabel.textContent = dir === 'mongo' ? 'SQL' : 'MongoDB';
+    inLabel.dataset.lang = dir === 'mongo' ? 'mongo' : 'sql';
+    outLabel.dataset.lang = dir === 'mongo' ? 'sql' : 'mongo';
+    $('input-stats').textContent = src ? `${plural(lineCount(src), 'line')} · ${plural(src.length, 'character')}` : '';
     errorBox.hidden = true;
-    if (!src.trim()) { output.textContent = ''; renderNotes([]); return; }
+    $('empty').hidden = !!src.trim();
+    if (!src.trim()) { showOutput('', dir); renderNotes([]); showStatus('idle', 'Waiting for input'); return; }
     const translator = dir === 'mongo' ? window.MongoToSql : window.SqlToMongo;
     try {
+      const started = performance.now();
       const result = translator.translate(src);
-      output.innerHTML = window.Editor.highlight(result.output, dir === 'mongo' ? 'sql' : 'mongo');
+      const ms = performance.now() - started;
+      showOutput(result.output, dir === 'mongo' ? 'sql' : 'mongo');
       renderNotes(result.notes);
+      showStatus('ok', `Translated in ${ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms`);
     } catch (e) {
       if (!(e instanceof translator.TranslateError)) console.error(e);
-      output.textContent = '';
+      showOutput('', dir);
       errorBox.textContent = e.message;
       errorBox.hidden = false;
       renderNotes([]);
+      showStatus('error', 'Not translated');
     }
   }
 
@@ -159,14 +208,61 @@
     });
     examples.appendChild(og);
   }
-  examples.addEventListener('change', () => {
-    if (examples.value === '') return;
-    input.value = EXAMPLES[Number(examples.value)].code;
-    examples.value = '';
+  function loadExample(i) {
+    input.value = EXAMPLES[i].code;
     document.querySelector('input[name="dir"][value="auto"]').checked = true;
     run();
-    input.focus();
+    input.focus({ preventScroll: true });
+  }
+  examples.addEventListener('change', () => {
+    if (examples.value === '') return;
+    loadExample(Number(examples.value));
+    examples.value = '';
   });
+  $('example-count').textContent = String(EXAMPLES.length);
+
+  // Example gallery: one card per example, filtered by the language tab.
+  const gallery = $('gallery-list');
+  const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
+  function showGallery(lang) {
+    tabs.forEach((tab) => {
+      const on = tab.dataset.lang === lang;
+      tab.setAttribute('aria-selected', String(on));
+      tab.tabIndex = on ? 0 : -1;
+      if (on) gallery.setAttribute('aria-labelledby', tab.id);
+    });
+    gallery.replaceChildren(...EXAMPLES.map((ex, i) => {
+      const [exLang, level] = ex.group.split(' · ');
+      if (exLang !== lang) return null;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'card';
+      card.dataset.level = level;
+      const badge = document.createElement('span');
+      badge.className = 'level';
+      badge.textContent = level;
+      const title = document.createElement('strong');
+      title.textContent = ex.label;
+      const preview = document.createElement('code');
+      preview.innerHTML = window.Editor.highlight(ex.code.split('\n').slice(0, 3).join('\n'), lang === 'SQL' ? 'sql' : 'mongo');
+      card.append(badge, title, preview);
+      card.addEventListener('click', () => {
+        loadExample(i);
+        $('workbench').scrollIntoView({ behavior: reducedMotion.matches ? 'auto' : 'smooth', block: 'center' });
+      });
+      return card;
+    }).filter(Boolean));
+  }
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => showGallery(tab.dataset.lang));
+    tab.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      next.focus();
+      showGallery(next.dataset.lang);
+    });
+  });
+  showGallery('SQL');
 
   input.addEventListener('input', schedule);
   input.addEventListener('keydown', (e) => {
@@ -177,22 +273,23 @@
   $('clear').addEventListener('click', () => { input.value = ''; run(); input.focus(); });
 
   $('swap').addEventListener('click', () => {
-    if (!output.textContent) return;
-    input.value = output.textContent;
+    if (!lastOutput) return;
+    input.value = lastOutput;
     document.querySelector('input[name="dir"][value="auto"]').checked = true;
     run();
   });
 
   $('copy').addEventListener('click', async () => {
-    const btn = $('copy');
-    if (!output.textContent) return;
+    const btn = $('copy'), label = btn.querySelector('span');
+    if (!lastOutput) return;
     try {
-      await navigator.clipboard.writeText(output.textContent);
-      btn.textContent = 'Copied!';
+      await navigator.clipboard.writeText(lastOutput);
+      label.textContent = 'Copied!';
+      btn.dataset.state = 'done';
     } catch (e) {
-      btn.textContent = 'Copy failed';
+      label.textContent = 'Copy failed';
     }
-    setTimeout(() => { btn.textContent = 'Copy'; }, 1200);
+    setTimeout(() => { label.textContent = 'Copy'; delete btn.dataset.state; }, 1200);
   });
 
   const saved = store.get(STORAGE_KEY);
